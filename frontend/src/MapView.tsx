@@ -13,6 +13,8 @@ export default function MapView() {
   const mapRef = useRef<HTMLDivElement | null>(null);
   const mapInstance = useRef<L.Map | null>(null);
 
+  const API_URL = import.meta.env.VITE_API_URL || "http://127.0.0.1:8000";
+
   useEffect(() => {
     if (!mapRef.current) return;
     if (mapInstance.current) return;
@@ -24,7 +26,7 @@ export default function MapView() {
       attribution: "&copy; OpenStreetMap contributors",
     }).addTo(map);
 
-    fetch("http://127.0.0.1:8000/memories")
+    fetch(`${API_URL}/memories`)
       .then((res) => res.json())
       .then((memories: Memory[]) => {
         const currentMap = mapInstance.current;
