@@ -6,6 +6,9 @@ FILE: backend\app\main.py
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.core.db import Base, engine
+from app.routers.memories import router as memories_router
+
 app = FastAPI()
 
 app.add_middleware(
@@ -19,22 +22,14 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-@app.get("/memories")
-def get_memories():
-    return [
-        {
-            "lat": 37.7749,
-            "lng": -122.4194,
-            "song": "Holocene",
-            "text": "Watching sunset"
-        },
-        {
-            "lat": 40.7128,
-            "lng": -74.0060,
-            "song": "Midnight City",
-            "text": "First night in NYC"
-        }
-    ]
+Base.metadata.create_all(bind=engine)
+
+app.include_router(memories_router)
+
+
+@app.get("/health")
+def health():
+    return {"status": "ok"}
 
 ================================================================================
 FILE: backend\app\__init__.py
@@ -46,14 +41,29 @@ FILE: backend\app\__init__.py
 FILE: backend\app\core\db.py
 ================================================================================
 
+import os
+from pathlib import Path
+
+from dotenv import load_dotenv
 from sqlalchemy import create_engine
 from sqlalchemy.orm import declarative_base, sessionmaker, Session
 
-DATABASE_URL = "sqlite:///./data/memories.db"
+load_dotenv()
+
+BASE_DIR = Path(__file__).resolve().parents[3]
+DATA_DIR = BASE_DIR / "data"
+DATA_DIR.mkdir(exist_ok=True)
+
+DEFAULT_SQLITE_URL = f"sqlite:///{DATA_DIR / 'memories.db'}"
+DATABASE_URL = os.getenv("DATABASE_URL", DEFAULT_SQLITE_URL)
+
+connect_args = {}
+if DATABASE_URL.startswith("sqlite"):
+    connect_args = {"check_same_thread": False}
 
 engine = create_engine(
     DATABASE_URL,
-    connect_args={"check_same_thread": False},
+    connect_args=connect_args,
 )
 
 SessionLocal = sessionmaker(
@@ -76,33 +86,37 @@ def get_db():
 FILE: backend\app\models\memory.py
 ================================================================================
 
-from sqlalchemy import Column, Integer, Float, String, DateTime
 from datetime import datetime
-from .db import Base
+from sqlalchemy import Column, DateTime, Float, Integer, String, Text
+from app.core.db import Base
+
 
 class Memory(Base):
     __tablename__ = "memories"
 
     id = Column(Integer, primary_key=True, index=True)
 
-    lat = Column(Float)
-    lng = Column(Float)
+    client_id = Column(String, index=True, nullable=False)
+
+    lat = Column(Float, nullable=False)
+    lng = Column(Float, nullable=False)
 
     place_name = Column(String, nullable=True)
     country = Column(String, nullable=True)
 
-    track_id = Column(String)
-    track_name = Column(String)
-    artist_name = Column(String)
+    track_id = Column(String, nullable=False)
+    track_name = Column(String, nullable=False)
+    artist_name = Column(String, nullable=False)
 
     album_image = Column(String, nullable=True)
     preview_url = Column(String, nullable=True)
 
-    memory_text = Column(String, nullable=True)
-
+    memory_text = Column(Text, nullable=True)
     memory_date = Column(String, nullable=True)
 
-    created_at = Column(DateTime, default=datetime.utcnow)
+    source = Column(String, nullable=False, default="manual")
+
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
 ================================================================================
 FILE: backend\app\models\__init__.py
@@ -111,22 +125,132 @@ FILE: backend\app\models\__init__.py
 
 
 ================================================================================
-FILE: backend\app\routers\memories.py
+FILE: backend\app\repositories\memory_repository.py
+================================================================================
+
+from sqlalchemy.orm import Session
+
+from app.models.memory import Memory
+from app.schemas.memory import MemoryCreate
+
+
+class MemoryRepository:
+    def __init__(self, db: Session):
+        self.db = db
+
+    def create(self, payload: MemoryCreate) -> Memory:
+        db_obj = Memory(**payload.model_dump())
+        self.db.add(db_obj)
+        self.db.commit()
+        self.db.refresh(db_obj)
+        return db_obj
+
+    def list_for_client(self, client_id: str) -> list[Memory]:
+        return (
+            self.db.query(Memory)
+            .filter(Memory.client_id == client_id)
+            .order_by(Memory.created_at.desc())
+            .all()
+        )
+
+================================================================================
+FILE: backend\app\repositories\__init__.py
 ================================================================================
 
 
+
+================================================================================
+FILE: backend\app\routers\memories.py
+================================================================================
+
+from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy.orm import Session
+
+from app.core.db import get_db
+from app.schemas.memory import MemoryCreate, MemoryRead
+from app.services.memory_service import MemoryService
+
+router = APIRouter(prefix="/memories", tags=["memories"])
+
+
+@router.post("", response_model=MemoryRead)
+def create_memory(payload: MemoryCreate, db: Session = Depends(get_db)):
+    service = MemoryService(db)
+    return service.create_memory(payload)
+
+
+@router.get("", response_model=list[MemoryRead])
+def get_memories(
+    client_id: str = Query(..., min_length=1),
+    db: Session = Depends(get_db),
+):
+    service = MemoryService(db)
+    return service.list_memories_for_client(client_id)
 
 ================================================================================
 FILE: backend\app\routers\__init__.py
 ================================================================================
 
+from . import memories
+from fastapi import APIRouter
 
+router = APIRouter()
+router.include_router(memories.router)
 
 ================================================================================
 FILE: backend\app\schemas\memory.py
 ================================================================================
 
+from datetime import datetime
+from pydantic import BaseModel, Field
 
+
+class MemoryCreate(BaseModel):
+    client_id: str = Field(min_length=1)
+
+    lat: float
+    lng: float
+
+    track_id: str = Field(min_length=1)
+    track_name: str = Field(min_length=1)
+    artist_name: str = Field(min_length=1)
+
+    album_image: str | None = None
+    preview_url: str | None = None
+
+    memory_text: str | None = None
+    memory_date: str | None = None
+
+    place_name: str | None = None
+    country: str | None = None
+
+    source: str = "manual"
+
+
+class MemoryRead(BaseModel):
+    id: int
+    client_id: str
+
+    lat: float
+    lng: float
+
+    place_name: str | None = None
+    country: str | None = None
+
+    track_id: str
+    track_name: str
+    artist_name: str
+
+    album_image: str | None = None
+    preview_url: str | None = None
+
+    memory_text: str | None = None
+    memory_date: str | None = None
+
+    source: str
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
 
 ================================================================================
 FILE: backend\app\schemas\__init__.py
@@ -138,7 +262,21 @@ FILE: backend\app\schemas\__init__.py
 FILE: backend\app\services\memory_service.py
 ================================================================================
 
+from sqlalchemy.orm import Session
 
+from app.repositories.memory_repository import MemoryRepository
+from app.schemas.memory import MemoryCreate
+
+
+class MemoryService:
+    def __init__(self, db: Session):
+        self.repo = MemoryRepository(db)
+
+    def create_memory(self, payload: MemoryCreate):
+        return self.repo.create(payload)
+
+    def list_memories_for_client(self, client_id: str):
+        return self.repo.list_for_client(client_id)
 
 ================================================================================
 FILE: backend\app\services\__init__.py
