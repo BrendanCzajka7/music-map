@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 
@@ -37,15 +37,14 @@ export default function MapView() {
   const mapInstance = useRef<L.Map | null>(null);
   const markersLayer = useRef<L.LayerGroup | null>(null);
 
-  const [loading, setLoading] = useState(false);
   const clientId = getClientId();
 
   async function loadMemories() {
-    const currentMap = mapInstance.current;
-    if (!currentMap) return;
+    const map = mapInstance.current;
+    if (!map) return;
 
     if (!markersLayer.current) {
-      markersLayer.current = L.layerGroup().addTo(currentMap);
+      markersLayer.current = L.layerGroup().addTo(map);
     }
 
     markersLayer.current.clearLayers();
@@ -67,90 +66,63 @@ export default function MapView() {
     });
   }
 
-  async function createTestMemory() {
-    const currentMap = mapInstance.current;
-    if (!currentMap) return;
+  async function createMemory(lat: number, lng: number) {
+    const track = prompt("Song name?");
+    if (!track) return;
 
-    setLoading(true);
+    const artist = prompt("Artist?");
+    if (!artist) return;
 
-    try {
-      const center = currentMap.getCenter();
+    const text = prompt("Memory description?");
+    const date = prompt("Memory date (YYYY-MM-DD)?");
 
-      const payload = {
-        client_id: clientId,
-        lat: center.lat,
-        lng: center.lng,
-        track_id: "test-track-1",
-        track_name: "Holocene",
-        artist_name: "Bon Iver",
-        memory_text: "Temporary test memory",
-        memory_date: "2026-03-14",
-        source: "manual",
-      };
+    const payload = {
+      client_id: clientId,
+      lat,
+      lng,
+      track_id: "manual",
+      track_name: track,
+      artist_name: artist,
+      memory_text: text,
+      memory_date: date,
+      source: "manual",
+    };
 
-      const res = await fetch("/api/memories", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(payload),
-      });
+    const res = await fetch("/api/memories", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(payload),
+    });
 
-      if (!res.ok) {
-        const text = await res.text();
-        throw new Error(`Failed to create memory: ${res.status} ${text}`);
-      }
-
-      await loadMemories();
-    } catch (err) {
-      console.error(err);
-      alert("Failed to create test memory. Check console/backend logs.");
-    } finally {
-      setLoading(false);
+    if (!res.ok) {
+      const text = await res.text();
+      throw new Error(`Failed to create memory: ${res.status} ${text}`);
     }
+
+    await loadMemories();
   }
 
   useEffect(() => {
-  console.log("fetching memories...")
+    if (!mapRef.current) return;
 
-  if (!mapRef.current) return;
+    if (!mapInstance.current) {
+      const map = L.map(mapRef.current).setView([37.7749, -122.4194], 5);
+      mapInstance.current = map;
 
-  if (!mapInstance.current) {
-    const map = L.map(mapRef.current).setView([37.7749, -122.4194], 5);
-    mapInstance.current = map;
+      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+        attribution: "&copy; OpenStreetMap contributors",
+      }).addTo(map);
 
-    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-      attribution: "&copy; OpenStreetMap contributors",
-    }).addTo(map);
-  }
+      map.on("click", (e) => {
+        const { lat, lng } = e.latlng;
+        createMemory(lat, lng).catch(console.error);
+      });
+    }
 
-  loadMemories().catch((err) => {
-    console.error("Failed to load memories:", err);
-  });
+    loadMemories().catch(console.error);
+  }, []);
 
-}, []);
-
-  return (
-    <div style={{ position: "relative" }}>
-      <button
-        onClick={createTestMemory}
-        disabled={loading}
-        style={{
-          position: "absolute",
-          top: 12,
-          left: 12,
-          zIndex: 1000,
-          padding: "8px 12px",
-          background: "white",
-          border: "1px solid #ccc",
-          borderRadius: 6,
-          cursor: "pointer",
-        }}
-      >
-        {loading ? "Saving..." : "Create Test Memory"}
-      </button>
-
-      <div ref={mapRef} style={{ height: "100vh", width: "100%" }} />
-    </div>
-  );
+  return <div ref={mapRef} style={{ height: "100vh", width: "100%" }} />;
 }
