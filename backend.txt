@@ -1,0 +1,147 @@
+
+================================================================================
+FILE: backend\app\main.py
+================================================================================
+
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+
+app = FastAPI()
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:5173",
+    ],
+    allow_origin_regex=r"https://.*\.vercel\.app",
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+@app.get("/memories")
+def get_memories():
+    return [
+        {
+            "lat": 37.7749,
+            "lng": -122.4194,
+            "song": "Holocene",
+            "text": "Watching sunset"
+        },
+        {
+            "lat": 40.7128,
+            "lng": -74.0060,
+            "song": "Midnight City",
+            "text": "First night in NYC"
+        }
+    ]
+
+================================================================================
+FILE: backend\app\__init__.py
+================================================================================
+
+
+
+================================================================================
+FILE: backend\app\core\db.py
+================================================================================
+
+from sqlalchemy import create_engine
+from sqlalchemy.orm import declarative_base, sessionmaker, Session
+
+DATABASE_URL = "sqlite:///./data/memories.db"
+
+engine = create_engine(
+    DATABASE_URL,
+    connect_args={"check_same_thread": False},
+)
+
+SessionLocal = sessionmaker(
+    autocommit=False,
+    autoflush=False,
+    bind=engine,
+)
+
+Base = declarative_base()
+
+
+def get_db():
+    db: Session = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+
+================================================================================
+FILE: backend\app\models\memory.py
+================================================================================
+
+from sqlalchemy import Column, Integer, Float, String, DateTime
+from datetime import datetime
+from .db import Base
+
+class Memory(Base):
+    __tablename__ = "memories"
+
+    id = Column(Integer, primary_key=True, index=True)
+
+    lat = Column(Float)
+    lng = Column(Float)
+
+    place_name = Column(String, nullable=True)
+    country = Column(String, nullable=True)
+
+    track_id = Column(String)
+    track_name = Column(String)
+    artist_name = Column(String)
+
+    album_image = Column(String, nullable=True)
+    preview_url = Column(String, nullable=True)
+
+    memory_text = Column(String, nullable=True)
+
+    memory_date = Column(String, nullable=True)
+
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+================================================================================
+FILE: backend\app\models\__init__.py
+================================================================================
+
+
+
+================================================================================
+FILE: backend\app\routers\memories.py
+================================================================================
+
+
+
+================================================================================
+FILE: backend\app\routers\__init__.py
+================================================================================
+
+
+
+================================================================================
+FILE: backend\app\schemas\memory.py
+================================================================================
+
+
+
+================================================================================
+FILE: backend\app\schemas\__init__.py
+================================================================================
+
+
+
+================================================================================
+FILE: backend\app\services\memory_service.py
+================================================================================
+
+
+
+================================================================================
+FILE: backend\app\services\__init__.py
+================================================================================
+
+
