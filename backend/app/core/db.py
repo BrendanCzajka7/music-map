@@ -15,7 +15,7 @@ DEFAULT_SQLITE_URL = f"sqlite:///{DATA_DIR / 'memories.db'}"
 
 DATABASE_URL = os.getenv("DATABASE_URL", DEFAULT_SQLITE_URL)
 
-connect_args = {}
+connect_args = {"sslmode": "require"}
 
 # SQLite needs special threading config
 if DATABASE_URL.startswith("sqlite"):
