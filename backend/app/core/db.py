@@ -12,11 +12,18 @@ DATA_DIR = BASE_DIR / "data"
 DATA_DIR.mkdir(exist_ok=True)
 
 DEFAULT_SQLITE_URL = f"sqlite:///{DATA_DIR / 'memories.db'}"
+
 DATABASE_URL = os.getenv("DATABASE_URL", DEFAULT_SQLITE_URL)
 
 connect_args = {}
+
+# SQLite needs special threading config
 if DATABASE_URL.startswith("sqlite"):
     connect_args = {"check_same_thread": False}
+
+# Supabase/Postgres requires SSL
+if DATABASE_URL.startswith("postgres"):
+    connect_args = {"sslmode": "require"}
 
 engine = create_engine(
     DATABASE_URL,
