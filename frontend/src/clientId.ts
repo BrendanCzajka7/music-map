@@ -18,3 +18,4 @@ export function getClientId(): string {
 
   return clientId;
 }
+
