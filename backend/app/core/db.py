@@ -1,5 +1,4 @@
 import os
-from pathlib import Path
 
 from dotenv import load_dotenv
 from sqlalchemy import create_engine
@@ -7,28 +6,11 @@ from sqlalchemy.orm import declarative_base, sessionmaker, Session
 
 load_dotenv()
 
-BASE_DIR = Path(__file__).resolve().parents[3]
-DATA_DIR = BASE_DIR / "data"
-DATA_DIR.mkdir(exist_ok=True)
+DATABASE_URL = os.getenv("DATABASE_URL")
+if not DATABASE_URL:
+    raise ValueError("DATABASE_URL not set")
 
-DEFAULT_SQLITE_URL = f"sqlite:///{DATA_DIR / 'memories.db'}"
-
-DATABASE_URL = os.getenv("DATABASE_URL", DEFAULT_SQLITE_URL)
-
-connect_args = {"sslmode": "require"}
-
-# SQLite needs special threading config
-if DATABASE_URL.startswith("sqlite"):
-    connect_args = {"check_same_thread": False}
-
-# Supabase/Postgres requires SSL
-if DATABASE_URL.startswith("postgres"):
-    connect_args = {"sslmode": "require"}
-
-engine = create_engine(
-    DATABASE_URL,
-    connect_args=connect_args,
-)
+engine = create_engine(DATABASE_URL)
 
 SessionLocal = sessionmaker(
     autocommit=False,
